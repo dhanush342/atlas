@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: bharat-tech-atlas
+    ports:
+      - "7860:7860"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - ENV=production
+      - LOG_LEVEL=info
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    container_name: bta-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  nginx:
+    image: nginx:alpine
+    container_name: bta-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./static:/usr/share/nginx/html:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    container_name: bta-scheduler
+    command: python scripts/scheduler.py --run-all
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+      - app
+    restart: "no"  # Run once, use cron externally for scheduling
+
+volumes:
+  redis-data:
